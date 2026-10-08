@@ -15,7 +15,7 @@ import time
 
 from PIL import Image, ImageDraw
 
-from token_tv.display import ASSETS, overview_rows, pixel_text, primary_window
+from token_tv.display import ASSETS, overview_rows, pixel_text, primary_window, second_window
 
 SIZE = 240
 FPS = 10
@@ -81,13 +81,15 @@ def readings(snapshot):
     for row in overview_rows(snapshot):
         value = primary_window(row)
         used = max(0, min(100, value['used_percent'])) if value else None
-        rows.append((row['provider'], used, bool(value) and row['status'] != 'ok'))
+        other = second_window(row)
+        rows.append((row['provider'], used, bool(value) and row['status'] != 'ok',
+                     max(0, min(100, other['used_percent'])) if other else None))
     return rows
 
 
 def seed_for(rows, now=None):
     bucket = int((time.time() if now is None else now) // 1800)
-    key = repr([(p, None if u is None else round(u), old) for p, u, old in rows]) + f'|{bucket}'
+    key = repr([(p, None if u is None else round(u), old) for p, u, old, _ in rows]) + f'|{bucket}'
     return int(hashlib.sha256(key.encode()).hexdigest()[:12], 16)
 
 
@@ -157,18 +159,22 @@ def bubble(frame, draw, provider, x, y, mirrored):
     draw.arc((x - RADIUS + 4, y - RADIUS + 4, x + RADIUS - 4, y + RADIUS - 4), 200, 250, fill=SHINE)
 
 
-def tag(draw, x, y, used, old):
+def tag(draw, x, y, used, old, second=None):
     text = '--' if used is None else f'{round(used)}%'
     width = (len(text) * 6 - 1) * 2
     pixel_text(draw, (x - width // 2, y + RADIUS + 5), text, scale=2, color=DIM if old else TAG)
     left, top = x - 19, y + RADIUS + 23
-    band = BANDS[0 if (used or 0) < 50 else 1 if used < 80 else 2 if used < 90 else 3]
-    lit = 0 if used is None else max(1, math.ceil(used / 10)) if used > 0 else 0
-    for cell in range(10):
-        start, tip = band
-        k = cell / 9
-        color = tuple(round(start[i] + (tip[i] - start[i]) * k) for i in range(3)) if cell < lit else EMPTY
-        draw.rectangle((left + cell * 4, top, left + cell * 4 + 2, top + 2), fill=color)
+    # The second window (e.g. 5H under WK) is a matching bar just below the first.
+    for value in (used, second) if second is not None else (used,):
+        band = BANDS[0 if (value or 0) < 50 else 1 if value < 80 else 2 if value < 90 else 3]
+        lit = 0 if value is None else max(1, math.ceil(value / 10)) if value > 0 else 0
+        for cell in range(10):
+            start, tip = band
+            k = cell / 9
+            color = tuple(round(start[i] + (tip[i] - start[i]) * k) for i in range(3)) if cell < lit else EMPTY
+            draw.rectangle((left + cell * 4, top, left + cell * 4 + 2, top + 2), fill=color)
+        top += 5
+    top -= 5
     if old:
         pixel_text(draw, (x - 8, top + 5), 'OLD', color=DIM)
 
@@ -198,12 +204,12 @@ def render_frames(snapshot, now=None):
         points = positions(t, paths, events)
         order = sorted(range(len(rows)), key=lambda i: points[i][1])
         for i in order:
-            provider, used, old = rows[i]
+            provider, used, old, second = rows[i]
             x, y = round(points[i][0]), round(points[i][1])
             mirrored = any(e['kind'] == 'spin' and e['bot'] == i and e['start'] <= t < e['end']
                            and int((t - e['start']) / (e['end'] - e['start']) * 6) % 2 == 1 for e in events)
             bubble(frame, draw, provider, x, y, mirrored)
-            tag(draw, x, y, used, old)
+            tag(draw, x, y, used, old, second)
             for event in events:
                 if event['kind'] == 'sparkle' and event['bot'] == i and event['start'] <= t < event['end']:
                     p = (t - event['start']) / (event['end'] - event['start'])

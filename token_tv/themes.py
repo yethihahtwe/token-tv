@@ -12,13 +12,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from token_tv.display import (
-    PROVIDER_INK, STATUS, account_label, mascot, overview_rows, primary_window, quota_period, row_shift, time_left,
+    PROVIDER_INK, STATUS, account_label, mascot, overview_rows, primary_window, quota_period, second_reading,
+    second_window, stacked, time_left,
 )
 
 WEB = Path(__file__).with_name('web')
 ASSET_DIR = Path(__file__).with_name('assets')
 SIZE = 240
-ROWS = (3, 82, 161)
 ROW_H = 76
 
 # (start, tip) per used-quota band: below 50, 50–79, 80–89, 90–100.
@@ -309,11 +309,9 @@ def render_digital(snapshot):
     for y in range(0, SIZE, 3):
         cv.back.line((0, y, SIZE, y), fill='#04130d')
     vt, seg = (lambda s: face('vt323.woff2', s)), (lambda s: face('dseg7-classic-bold.woff2', s))
-    rows = overview_rows(snapshot)
-    for index, row in enumerate(rows):
-        y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+    for row, other, y, h in stacked(overview_rows(snapshot), ROW_H, 30, 3):
         used, period, old, reset = reading(row)
-        cv.back.rectangle((4, y, 235, y + ROW_H - 1), fill='#03100b', outline=line)
+        cv.back.rectangle((4, y, 235, y + h - 1), fill='#03100b', outline=line)
         cv.back.line((5, y + 25, 234, y + 25), fill='#0f3a2c')
         # LCD: the bot lit in the same mint phosphor as the text, dark eyes, soft glow; no brand colours.
         place_bot(cv.ink, bot_sprite(row['provider'], 24, 17, mint, '#03100b'), (9, y + 4, 24, 17))
@@ -335,6 +333,15 @@ def render_digital(snapshot):
             cv.text((229, y + 43), clock, seg(14), amber, glow=(255, 190, 70, 120), anchor='ra')
         gauge(cv, (11, y + 61, 229, y + 70), used, band('digital', used or 0), gap=3, track='#0b2a1f',
               empty='#2a6b52', stale=old, split='#03100b', glow=True)
+        if other:
+            second, label, left = second_reading(other)
+            cv.text((11, y + 73), f'{label} {round(second)}%', vt(18), mint)
+            if left != '--':
+                clock = segment_time(left)
+                cv.text((229, y + 74), ghost(clock), seg(14), '#2a2108', anchor='ra')
+                cv.text((229, y + 74), clock, seg(14), amber, glow=(255, 190, 70, 120), anchor='ra')
+            gauge(cv, (11, y + 90, 229, y + 99), second, band('digital', second), gap=3, track='#0b2a1f',
+                  empty='#2a6b52', stale=old, split='#03100b', glow=True)
     return cv.finish(blur=2)
 
 
@@ -345,12 +352,10 @@ def render_neon(snapshot):
         for x in range(4, SIZE, 8):
             cv.back.point((x, y), fill='#0e0b1c')
     orb, ox = (lambda s, w=700: face('orbitron.ttf', s, w)), (lambda s, w=800: face('oxanium.woff2', s, w))
-    rows = overview_rows(snapshot)
-    for index, row in enumerate(rows):
-        y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+    for row, other, y, h in stacked(overview_rows(snapshot), ROW_H, 26, 3):
         a, a2 = ACCENT['neon'][row['provider']]
         used, period, old, reset = reading(row)
-        box = (5, y + 1, 234, y + ROW_H - 2)
+        box = (5, y + 1, 234, y + h - 2)
         cv.back.rounded_rectangle(box, radius=12, fill=mix('#06050e', a, .05))
         cv.glow.rounded_rectangle(box, radius=12, outline=rgb(a) + (255,), width=3)
         cv.draw.rounded_rectangle(box, radius=12, outline=mix(a, '#ffffff', .45), width=1)
@@ -372,6 +377,12 @@ def render_neon(snapshot):
         cv.glow.ellipse((ring - 8, y + 32, ring + 8, y + 48), outline=rgb(a) + (220,), width=2)
         gauge(cv, (14, y + 59, 226, y + 66), used, band('neon', used or 0), gap=3, shape='round', radius=3,
               track='#15122a', empty='#4a4170', stale=old, glow=True)
+        if other:
+            second, label, left = second_reading(other)
+            cv.text((14, y + 71), f'{label} {round(second)}%', orb(10), mix(a, '#ffffff', .2))
+            cv.text((226, y + 66), left, ox(17, 700), '#ffffff', glow=rgb(a) + (170,), anchor='ra')
+            gauge(cv, (14, y + 86, 226, y + 93), second, band('neon', second), gap=3, shape='round', radius=3,
+                  track='#15122a', empty='#4a4170', stale=old, glow=True)
     return cv.finish(blur=3)
 
 
@@ -435,14 +446,18 @@ def render_retro(snapshot):
         cv.back.point((x, y), fill=rnd.choice(('#ffffff', '#b9c8ff', '#ffe9a8')))
     title = lambda s: face('press-start-2p.ttf', s)
     rows = overview_rows(snapshot)
-    for index, row in enumerate(rows):
-        y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+    placed = stacked(rows, ROW_H, 28, 3)
+    if all(other is None for _, other, _, _ in placed):  # no room for second bars: show them in the box
+        placed = [(row, second_window(row), y, h) for row, _, y, h in placed]
+    for row, other, y, h in placed:
         a, a2 = ACCENT['retro'][row['provider']]
         used, period, old, reset = reading(row)
         pixel_scene(cv, row['provider'], y)
-        cv.back.rectangle((4, y, 235, y + ROW_H - 1), outline=outline_ink, width=2)
-        cv.back.rectangle((6, y + 2, 233, y + ROW_H - 3), outline=a, width=2)
-        for cx, cy in ((4, y), (234, y), (4, y + ROW_H - 2), (234, y + ROW_H - 2)):
+        if h > ROW_H:
+            cv.back.rectangle((6, y + ROW_H - 3, 233, y + h - 3), fill=cv.base.getpixel((120, y + ROW_H - 4)))
+        cv.back.rectangle((4, y, 235, y + h - 1), outline=outline_ink, width=2)
+        cv.back.rectangle((6, y + 2, 233, y + h - 3), outline=a, width=2)
+        for cx, cy in ((4, y), (234, y), (4, y + h - 2), (234, y + h - 2)):
             cv.back.rectangle((cx, cy, cx + 1, cy + 1), fill='#0a0f2c')
         cv.draw.rectangle((11, y + 8, 50, y + 47), fill=outline_ink, outline=a, width=2)
         if row['provider'] == 'grok':
@@ -451,14 +466,28 @@ def render_retro(snapshot):
         cv.text((57, y + 9), account_label(row), title(8), cream, stroke_width=1, stroke_fill=outline_ink)
         cv.text((57, y + 22), number_text(used) + ('%' if used is not None else ''), title(16), cream,
                 stroke_width=2, stroke_fill=outline_ink)
-        cv.text((57, y + 41), period + (' OLD' if old else ''), title(8), '#ff9a9a' if old else '#b9d2ff', stroke_width=1, stroke_fill=outline_ink)
+        boxed = other and h == ROW_H
+        note = ' OLD' if old else ' ' + reset.upper() if boxed else ''
+        cv.text((57, y + 41), period + note, title(8), '#ff9a9a' if old else '#b9d2ff', stroke_width=1, stroke_fill=outline_ink)
         cv.draw.rectangle((153, y + 9, 228, y + 40), fill=outline_ink, outline=a, width=2)
-        cv.text((159, y + 14), 'RESET IN', title(8), '#a9bdf0')
-        cv.text((159, y + 27), reset.upper(), title(8), cream)
-        cv.draw.rectangle((10, y + 51, 229, y + 66), fill=outline_ink)
-        cv.draw.rectangle((12, y + 53, 227, y + 64), outline='#3a4fb0')
-        gauge(cv, (14, y + 55, 225, y + 62), used, band('retro', used or 0), gap=2, track='#19235f',
-              empty='#3a4ea8', stale=old, shade=True, stepped=True)
+        if boxed:
+            cv.text((159, y + 14), quota_period(other) + ' ' + number_text(max(0, min(100, other['used_percent']))) + '%', title(8), cream)
+            cv.text((159, y + 27), time_left(other.get('resets_at')).upper(), title(8), '#a9bdf0')
+        else:
+            cv.text((159, y + 14), 'RESET IN', title(8), '#a9bdf0')
+            cv.text((159, y + 27), reset.upper(), title(8), cream)
+        bars = [(y + 51, used)]
+        if h > ROW_H:
+            second = max(0, min(100, other['used_percent']))
+            cv.text((14, y + 70), quota_period(other) + ' ' + number_text(second) + '%', title(8), cream, stroke_width=1, stroke_fill=outline_ink)
+            cv.text((225, y + 70), time_left(other.get('resets_at')).upper(), title(8), '#b9d2ff', anchor='ra',
+                    stroke_width=1, stroke_fill=outline_ink)
+            bars.append((y + 80, second))
+        for top, value in bars:
+            cv.draw.rectangle((10, top, 229, top + 15), fill=outline_ink)
+            cv.draw.rectangle((12, top + 2, 227, top + 13), outline='#3a4fb0')
+            gauge(cv, (14, top + 4, 225, top + 11), value, band('retro', value or 0), gap=2, track='#19235f',
+                  empty='#3a4ea8', stale=old, shade=True, stepped=True)
     return cv.finish()
 
 
@@ -469,20 +498,18 @@ def render_hud(snapshot):
         cv.back.line((g, 0, g, SIZE), fill=color)
         cv.back.line((0, g, SIZE, g), fill=color)
     chakra = lambda s, bold=True: face('chakra-petch-700.woff2' if bold else 'chakra-petch-500.woff2', s)
-    rows = overview_rows(snapshot)
-    for index, row in enumerate(rows):
-        y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+    for row, other, y, h in stacked(overview_rows(snapshot), ROW_H, 26, 3):
         a, a2 = ACCENT['hud'][row['provider']]
         used, period, old, reset = reading(row)
         cut = 10
-        frame = [(4, y), (235 - cut, y), (235, y + cut), (235, y + ROW_H - 1), (4 + cut, y + ROW_H - 1), (4, y + ROW_H - 1 - cut)]
+        frame = [(4, y), (235 - cut, y), (235, y + cut), (235, y + h - 1), (4 + cut, y + h - 1), (4, y + h - 1 - cut)]
         cv.back.polygon(frame, fill=mix('#06101a', a, .05))
         cv.draw.polygon(frame, outline=mix(a, '#1b3b58', .45))
         cv.glow.line(frame + [frame[0]], fill=rgb(a) + (150,), width=2)
         cv.draw.line((8, y + 4, 8, y + 12), fill=a, width=2)
         cv.draw.line((8, y + 4, 16, y + 4), fill=a, width=2)
-        cv.draw.line((231, y + ROW_H - 5, 231, y + ROW_H - 13), fill=a, width=2)
-        cv.draw.line((231, y + ROW_H - 5, 223, y + ROW_H - 5), fill=a, width=2)
+        cv.draw.line((231, y + h - 5, 231, y + h - 13), fill=a, width=2)
+        cv.draw.line((231, y + h - 5, 223, y + h - 5), fill=a, width=2)
         # HUD: the row's accent colour as a hologram: solid bot with every other line dimmed.
         place_bot(cv.ink, scanlined(bot_sprite(row['provider'], 21, 19, a)), (11, y + 8, 21, 19))
         place_bot(cv.bloom, bot_sprite(row['provider'], 21, 19, a), (11, y + 8, 21, 19))
@@ -498,6 +525,12 @@ def render_hud(snapshot):
         cv.text((228, y + 40), reset, chakra(17), '#ffffff', anchor='ra')
         gauge(cv, (12, y + 60, 228, y + 68), used, band('hud', used or 0), gap=3, shape='skew', skew=4,
               track='#0c1c2b', empty='#22476a', stale=old, glow=True)
+        if other:
+            second, label, left = second_reading(other)
+            cv.text((12, y + 72), f'{label} {round(second)}%', chakra(10, False), '#8fadc6')
+            cv.text((228, y + 67), left, chakra(17), '#ffffff', anchor='ra')
+            gauge(cv, (12, y + 86, 228, y + 94), second, band('hud', second), gap=3, shape='skew', skew=4,
+                  track='#0c1c2b', empty='#22476a', stale=old, glow=True)
     return cv.finish(blur=2)
 
 
