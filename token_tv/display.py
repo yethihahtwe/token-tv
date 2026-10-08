@@ -72,6 +72,30 @@ def primary_window(row):
     return max(row['windows'], key=lambda value: value['used_percent'], default=None)
 
 
+def second_window(row):
+    """The next fullest window (e.g. 5H beside WK), or None."""
+    rest = [w for w in row['windows'] if w is not primary_window(row)]
+    return max(rest, key=lambda value: value['used_percent'], default=None)
+
+
+def second_reading(window):
+    return max(0, min(100, window['used_percent'])), quota_period(window), time_left(window.get('resets_at'))
+
+
+def stacked(rows, base, extra, gap):
+    """(row, second window, top, height) per row. A row with a second window grows by `extra` for its own
+    bar; when the screen cannot fit every grown row (three two-window rows), no row grows."""
+    others = [second_window(row) for row in rows]
+    heights = [base + extra * bool(o) for o in others]
+    if sum(heights) + gap * (len(rows) - 1) > 234:
+        heights = [base] * len(rows)
+    y, placed = (240 - sum(heights) - gap * (len(rows) - 1)) // 2, []
+    for row, other, h in zip(rows, others, heights):
+        placed.append((row, other if h > base else None, y, h))
+        y += h + gap
+    return placed
+
+
 def time_left(reset):
     if not reset:
         return '--'
@@ -198,9 +222,7 @@ def pixel_text(draw, xy, text, scale=1, color=TEXT, align='left'):
 def render_pixel(snapshot):
     image = Image.new('RGB', (240, 240), BACKGROUND)
     draw = ImageDraw.Draw(image)
-    rows = overview_rows(snapshot)
-    for index, row in enumerate(rows):
-        y = 8 + index * 78 + row_shift(len(rows), 78)
+    for index, (row, other, y, h) in enumerate(stacked(overview_rows(snapshot), 70, 30, 8)):
         if index:
             for x in range(14, 227, 4):
                 draw.point((x, y - 6), fill=RULE)
@@ -225,6 +247,11 @@ def render_pixel(snapshot):
         else:
             pixel_text(draw, (226, y + 25), STATUS.get(row['status'], 'NO DATA'), color=MUTED, align='right')
         horizontal_gauge(draw, (68, y + 52), used)
+        if other:
+            second, period, reset = second_reading(other)
+            pixel_text(draw, (68, y + 69), f'{period} {round(second)}%', color=MUTED)
+            pixel_text(draw, (226, y + 62), reset.replace(' ', ''), scale=2, color=MUTED, align='right')
+            horizontal_gauge(draw, (68, y + 81), second)
     return image
 
 
