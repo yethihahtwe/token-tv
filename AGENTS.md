@@ -15,7 +15,7 @@ python3 -B -m unittest discover -s tests
 When the user says "Set up TokenTV for me":
 
 1. Install: `python3 -m venv .venv && .venv/bin/pip install -e .` (Windows: `.venv\Scripts\pip install -e .`),
-   or with Node only: `npx github:click6067-ship-it/token-tv demo`.
+   or with Node only: `npx github:yethihahtwe/token-tv demo`.
 2. Ask the user for the clock's IP address (shown on the clock's screen).
 3. Run `.venv/bin/token-tv start --device-url <ip>`. It finds the Claude, Codex and Grok CLIs that are already
    signed in, reads each account's email through the official login, asks the user to confirm, saves the
@@ -23,7 +23,7 @@ When the user says "Set up TokenTV for me":
 4. If it says nothing is signed in, tell the user to sign in to the CLI they use (e.g. `claude`, then /login)
    and run step 3 again. A second account of the same service: `.venv/bin/token-tv connect --account <key>`.
 
-Verified on Linux with one SD_PRO clock. Mac and Windows hosts are untested; report what fails.
+Verified on Linux with one SD_PRO clock and one SmallTV-Ultra (Ultra-V9.0.54). Mac and Windows hosts are untested; report what fails.
 
 ## Change how things look
 

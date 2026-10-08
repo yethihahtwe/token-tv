@@ -8,13 +8,14 @@ not "probably fine".
 | Clock | Firmware web UI | What TokenTV uses | Checked |
 | --- | --- | --- | --- |
 | The author's 240×240 GeekMagic SmallTV-style Wi-Fi clock (receipt: ₩5,650 on a Korean AliExpress discount; prices vary by region) | Stock firmware with the **SD_PRO** web UI and a photo album | `/theme/list`, `/photo/list`, `/photo/upload`, photo theme id `2` | One unit, Linux host |
+| GeekMagic **SmallTV-Ultra** (this fork) | Stock firmware `Ultra-V9.0.54`, detected from `/v.json` | `/app.json`, `/album.json`, `/doUpload?dir=/image/`, `/set?img=`, Photo Album theme `3` | One unit, Linux host |
 
 TokenTV never flashes firmware and never deletes your photos. It uploads one picture, switches the
 clock to its photo theme, and `token-tv run --restore-display` puts the original theme back.
 
 ## Not verified
 
-- Other GeekMagic models, SmallTV Pro, and clones that look the same. A similar case is not evidence
+- Other GeekMagic models (besides the SmallTV-Ultra above), SmallTV Pro, and clones that look the same. A similar case is not evidence
   of the same firmware.
 - Firmware without the photo album page or with different photo API paths.
 - macOS and Windows hosts.

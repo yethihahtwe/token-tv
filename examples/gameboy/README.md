@@ -16,7 +16,7 @@ The third image marks Codex as an old reading and gives Grok no data.
 Checked on Linux (2026-10-04). Python 3.10+.
 
 ```bash
-git clone https://github.com/click6067-ship-it/token-tv && cd token-tv
+git clone https://github.com/yethihahtwe/token-tv && cd token-tv
 python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/python examples/gameboy/gameboy.py   # writes before.png, after.png, after-old-unknown.png here
 ```
